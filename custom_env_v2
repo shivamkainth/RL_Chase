@@ -1,0 +1,106 @@
+import numpy as np
+import gymnasium as gym
+
+from gymnasium.spaces import Box, Discrete
+
+
+import random
+import tensorflow as tf
+import requests
+import json, numpy as np
+import time
+
+class ENV(gym.Env):
+    def __init__(self, ipv4="127.0.0.1", port=5000):
+        self.ipv4 = ipv4
+        self.port = port
+        self.reward=-20
+        self.action_space = Box(low=np.array([-1, -1, -1]),
+                                       high=np.array([1, 1, 1]),
+                                       dtype=np.float32)
+        self.observation_space = Box(low=np.array([0,0,0,0]), high=np.array([641,481,641,481]))
+        self.state = [-1,-1,-1,-1]
+        self.eps_length = 150
+        self.no_view=0
+            
+    def step(self, action):
+        # try:
+
+
+        self.state = requests.get(f"http://{self.ipv4}:{self.port}/observe").json()
+
+            
+        # except Exception as e:
+        #     self.state = {"obs":[-1,-1,-1,-1,-400]}
+        #     self.no_view+=1
+        #     print("observation failure...")
+        self.state = self.state['obs']
+        self.reward = self.state[4]
+        self.state = self.state[:4]
+        print("[state]: ", self.state)
+        action_list = action.tolist()
+        scaled_action_list = [x * 1 for x in action_list]
+        print("Actions: ",action,"list: ",scaled_action_list)
+        headers = {'Content-Type': 'application/json'}
+        payload = {'action':scaled_action_list}
+
+        requests.post(f"http://{self.ipv4}:{self.port}/take_action", headers=headers,json=payload)
+
+        # requests.post(f"http://{self.ipv4}:{self.port}/take_action", data=json.dumps({"action": scaled_action_list}),
+        #                     )
+      
+# #next state
+#         try:
+
+
+            # self.state = requests.get(f"http://{self.ipv4}:{self.port}/observe").json()
+            # self.state=self.state[:-1]
+#         except Exception as e:
+#             self.state = {"obs":[-1,-1,-1,-1,-400]}
+#             self.no_view+=1
+#             print("observation failure...")
+        self.state = requests.get(f"http://{self.ipv4}:{self.port}/observe").json()
+        print(self.state,len(self.state),type(self.state))
+        
+        self.state = self.state['obs']
+     
+        self.reward = self.state[4]
+        self.state = self.state[:4]
+        print("[state]: ", self.state,"reward: ", self.reward)
+        self.eps_length -= 1 
+        if self.reward==-20 and self.state[3]==-1:
+            print(self.state[3])
+            self.no_view+=1
+        print("no_view: ", self.no_view)
+        # Checking if eps is done
+        if self.eps_length <= 0: 
+            terminated = True
+        else:
+            terminated = False
+        if self.no_view>8:
+            truncated=True
+        else:
+            truncated=False
+        # Setting the placeholder for info
+        info = {}
+        
+        # Returning the step information
+        return self.state, self.reward, terminated, truncated, info
+    
+    def reset(self, seed=None, options=None):
+        requests.get("http://127.0.0.1:5000/reset")
+        try:
+            self.state = requests.get(f"http://{self.ipv4}:{self.port}/observe").json()
+            self.state=self.state[:-1]
+        except Exception as e:
+            self.state = {"obs":[-1,-1,-1,-1,-20]}
+            
+            print("observation failure...")
+
+        self.state = self.state['obs']
+        self.state = self.state[:4]
+        self.eps_length = 1500
+        self.reward=-20
+        self.no_view=0
+        return self.state
+
